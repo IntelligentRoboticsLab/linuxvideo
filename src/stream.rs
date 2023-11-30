@@ -27,6 +27,9 @@ pub struct Frame {
     stream: Arc<Mutex<(u32, ReadStream)>>,
 }
 
+unsafe impl Sync for Frame {}
+unsafe impl Send for Frame {}
+
 impl Deref for Frame {
     type Target = [u8];
 
