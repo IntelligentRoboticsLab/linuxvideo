@@ -37,6 +37,8 @@ pub use shared::{
     OutputCapabilities, OutputType,
 };
 
+pub use stream::Frame;
+
 /// Returns an iterator over all connected V4L2 devices.
 pub fn list() -> io::Result<impl Iterator<Item = io::Result<Device>>> {
     Ok(fs::read_dir("/dev")?.flat_map(|file| {
@@ -360,6 +362,10 @@ impl VideoCaptureDevice {
             Memory::MMAP,
             DEFAULT_BUFFER_COUNT,
         )?)
+    }
+
+    pub fn into_stream_num_buffers(self, num_buffers: u32) -> io::Result<ReadStream> {
+        ReadStream::new(self.file, BufType::VIDEO_CAPTURE, Memory::MMAP, num_buffers)
     }
 }
 

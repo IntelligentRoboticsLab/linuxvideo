@@ -7,6 +7,7 @@ use std::num::NonZeroUsize;
 use std::ops::{Deref, DerefMut};
 use std::os::raw::c_int;
 use std::os::unix::prelude::{AsRawFd, RawFd};
+use std::sync::{Arc, Mutex};
 use std::{io, slice};
 
 use nix::sys::mman::{mmap, munmap, MapFlags, ProtFlags};
@@ -20,12 +21,82 @@ enum AllocType {
     Mmap,
 }
 
-struct Buffer {
+pub struct Frame {
+    index: u32,
+    buffer: Buffer,
+    stream: Arc<Mutex<(u32, ReadStream)>>,
+}
+
+impl Deref for Frame {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.buffer
+    }
+}
+
+impl Drop for Frame {
+    fn drop(&mut self) {
+        let mut guard = self.stream.lock().unwrap();
+        guard.0 += 1;
+
+        match guard.1.enqueue_buf(self.index) {
+            Ok(_) => (),
+            Err(_) => eprintln!("Frame: Destructor could not enqueue the buffer"),
+        }
+    }
+}
+
+pub struct FrameProvider {
+    stream: Arc<Mutex<(u32, ReadStream)>>,
+}
+
+impl FrameProvider {
+    pub fn fetch_frame(&mut self) -> io::Result<Frame> {
+        let mut guard = self.stream.lock().unwrap();
+
+        if guard.0 == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::WouldBlock,
+                "All buffers are currently in use",
+            ));
+        }
+
+        let (index, buffer) = guard.1.dequeue_buf()?;
+        let buffer = buffer.clone();
+        guard.0 -= 1;
+
+        Ok(Frame {
+            index,
+            buffer,
+            stream: self.stream.clone(),
+        })
+    }
+}
+
+impl FrameProvider {
+    pub(crate) fn new(stream: ReadStream, num_buffers: u32) -> Self {
+        FrameProvider {
+            stream: Arc::new(Mutex::new((num_buffers, stream))),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct Buffer {
     /// Pointer in our address space where this buffer is mapped or allocated.
     ptr: *mut c_void,
     /// Size of the buffer in bytes.
     length: u32,
     queued: bool,
+}
+
+impl Deref for Buffer {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { slice::from_raw_parts(self.ptr as *const u8, self.length as usize) }
+    }
 }
 
 /// Owns all buffers allocated or mapped for a device stream.
@@ -169,6 +240,10 @@ impl ReadStream {
         Ok(())
     }
 
+    pub(crate) fn enqueue_buf(&mut self, index: u32) -> io::Result<()> {
+        self.enqueue(index)
+    }
+
     fn enqueue_all(&mut self) -> io::Result<()> {
         for i in 0..self.buffers.buffers.len() {
             if !self.buffers.buffers[i].queued {
@@ -235,6 +310,27 @@ impl ReadStream {
         self.enqueue(buf.index)?;
 
         res
+    }
+
+    pub(crate) fn dequeue_buf(&mut self) -> io::Result<(u32, &mut Buffer)> {
+        let mut buf: raw::Buffer = unsafe { mem::zeroed() };
+        buf.type_ = self.buf_type;
+        buf.memory = self.mem_type;
+
+        unsafe {
+            raw::dqbuf(self.file.as_raw_fd(), &mut buf)?;
+        }
+
+        let buffer = &mut self.buffers.buffers[buf.index as usize];
+        buffer.queued = false;
+
+        Ok((buf.index, buffer))
+    }
+
+    pub fn into_frame_provider(self) -> FrameProvider {
+        let num_buffers = self.buffers.buffers.len() as u32;
+
+        FrameProvider::new(self, num_buffers)
     }
 
     /// Tests whether the next call to [`ReadStream::dequeue`] will block.
