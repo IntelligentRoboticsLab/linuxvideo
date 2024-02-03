@@ -76,7 +76,7 @@ impl FrameProvider {
         })
     }
 
-    /// Same as [`fetch_frame`] but non-blocking.
+    /// Same as [`fetch_frame`](FrameProvider::fetch_frame) but non-blocking.
     ///
     /// Return [`io::ErrorKind::WouldBlock`] if the call cannot be completed without blocking.
     pub fn try_fetch_frame(&mut self) -> io::Result<Frame> {
