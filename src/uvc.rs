@@ -13,6 +13,10 @@ use crate::Device;
 
 use self::raw::{XuControlQuery, XuQuery};
 
+const HFLIP_UNIT_SELECTOR: u8 = 0x0c;
+const VFLIP_UNIT_SELECTOR: u8 = 0x0d;
+const UVC_EXTENSION_UNIT: u8 = 0x03;
+
 /// `UVCH` meta capture format.
 #[derive(Clone, Copy, Debug)]
 pub struct UvcMetadata {
@@ -79,6 +83,46 @@ impl<'a> UvcExt<'a> {
             unit_id,
             device: self.device,
         }
+    }
+
+    pub fn horizontal_flip(&mut self) -> io::Result<()> {
+        self.set_control(
+            UVC_EXTENSION_UNIT,
+            HFLIP_UNIT_SELECTOR,
+            XuQuery::SET_CUR,
+            &mut [1, 0],
+        )
+    }
+
+    pub fn vertical_flip(&mut self) -> io::Result<()> {
+        self.set_control(
+            UVC_EXTENSION_UNIT,
+            VFLIP_UNIT_SELECTOR,
+            XuQuery::SET_CUR,
+            &mut [1, 0],
+        )
+    }
+
+    fn set_control<const SIZE: usize>(
+        &self,
+        unit: u8,
+        selector: u8,
+        query: XuQuery,
+        data: &mut [u8; SIZE],
+    ) -> io::Result<()> {
+        let mut query = XuControlQuery {
+            unit,
+            selector,
+            query,
+            size: SIZE as u16,
+            data: data.as_mut_ptr(),
+        };
+
+        unsafe {
+            raw::ctrl_query(self.device.file.as_raw_fd(), &mut query)?;
+        }
+
+        Ok(())
     }
 }
 
