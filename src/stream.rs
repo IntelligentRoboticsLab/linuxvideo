@@ -75,39 +75,6 @@ impl FrameProvider {
             stream: self.stream.clone(),
         })
     }
-
-    /// Same as [`fetch_frame`](FrameProvider::fetch_frame) but non-blocking.
-    ///
-    /// Return [`io::ErrorKind::WouldBlock`] if the call cannot be completed without blocking.
-    pub fn try_fetch_frame(&mut self) -> io::Result<Frame> {
-        let mut guard = self.stream.try_lock().map_err(|_| {
-            std::io::Error::new(io::ErrorKind::WouldBlock, "Could not acquire the lock")
-        })?;
-
-        if guard.0 == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::WouldBlock,
-                "All buffers are currently in use",
-            ));
-        }
-
-        if guard.1.will_block()? {
-            return Err(io::Error::new(
-                io::ErrorKind::WouldBlock,
-                "No new frame available",
-            ));
-        }
-
-        let (index, buffer) = guard.1.dequeue_buf()?;
-        let buffer = buffer.clone();
-        guard.0 -= 1;
-
-        Ok(Frame {
-            index,
-            buffer,
-            stream: self.stream.clone(),
-        })
-    }
 }
 
 impl FrameProvider {
