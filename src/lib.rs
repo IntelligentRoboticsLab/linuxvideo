@@ -14,7 +14,7 @@ mod shared;
 pub mod stream;
 pub mod uvc;
 
-use nix::errno::Errno;
+use nix::{errno::Errno, libc};
 use pixel_format::PixelFormat;
 use std::{
     fmt,
@@ -86,11 +86,24 @@ impl Device {
     ///
     /// If the path does not refer to a V4L2 device node, an error will be returned.
     pub fn open<A: AsRef<Path>>(path: A) -> io::Result<Self> {
-        Self::open_impl(path.as_ref())
+        Self::open_impl(path.as_ref(), true)
     }
 
-    fn open_impl(path: &Path) -> io::Result<Self> {
-        let file = OpenOptions::new().read(true).write(true).open(path)?;
+    /// Opens a V4L2 device file from the given path.
+    ///
+    /// If the path does not refer to a V4L2 device node, an error will be returned.
+    pub fn open_non_blocking<A: AsRef<Path>>(path: A) -> io::Result<Self> {
+        Self::open_impl(path.as_ref(), false)
+    }
+
+    fn open_impl(path: &Path, blocking: bool) -> io::Result<Self> {
+        let mut open_options = OpenOptions::new();
+        open_options.read(true).write(true);
+        if !blocking {
+            open_options.custom_flags(libc::O_NONBLOCK);
+        }
+        let file = open_options.open(path)?;
+
         let mut this = Self {
             file,
             available_capabilities: CapabilityFlags::empty(),
