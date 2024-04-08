@@ -16,6 +16,7 @@ use self::raw::{XuControlQuery, XuQuery};
 const HFLIP_UNIT_SELECTOR: u8 = 0x0c;
 const VFLIP_UNIT_SELECTOR: u8 = 0x0d;
 const UVC_EXTENSION_UNIT: u8 = 0x03;
+const EXPOSURE_WEIGHTS_UNIT_SELECTOR: u8 = 0x09;
 
 /// `UVCH` meta capture format.
 #[derive(Clone, Copy, Debug)]
@@ -86,7 +87,7 @@ impl<'a> UvcExt<'a> {
     }
 
     pub fn horizontal_flip(&mut self) -> io::Result<()> {
-        self.set_control(
+        self.control_query(
             UVC_EXTENSION_UNIT,
             HFLIP_UNIT_SELECTOR,
             XuQuery::SET_CUR,
@@ -95,7 +96,7 @@ impl<'a> UvcExt<'a> {
     }
 
     pub fn vertical_flip(&mut self) -> io::Result<()> {
-        self.set_control(
+        self.control_query(
             UVC_EXTENSION_UNIT,
             VFLIP_UNIT_SELECTOR,
             XuQuery::SET_CUR,
@@ -103,7 +104,25 @@ impl<'a> UvcExt<'a> {
         )
     }
 
-    fn set_control<const SIZE: usize>(
+    pub fn set_auto_exposure_weights(&mut self, weights: &mut [u8; 17]) -> io::Result<()> {
+        self.control_query(
+            UVC_EXTENSION_UNIT,
+            EXPOSURE_WEIGHTS_UNIT_SELECTOR,
+            XuQuery::SET_CUR,
+            weights,
+        )
+    }
+
+    pub fn get_auto_exposure_weights(&mut self, out: &mut [u8; 17]) -> io::Result<()> {
+        self.control_query(
+            UVC_EXTENSION_UNIT,
+            EXPOSURE_WEIGHTS_UNIT_SELECTOR,
+            XuQuery::GET_CUR,
+            out,
+        )
+    }
+
+    fn control_query<const SIZE: usize>(
         &self,
         unit: u8,
         selector: u8,

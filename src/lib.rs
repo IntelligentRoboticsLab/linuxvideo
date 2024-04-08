@@ -89,6 +89,13 @@ impl Device {
         Self::open_impl(path.as_ref(), true)
     }
 
+    pub fn try_clone(&self) -> io::Result<Self> {
+        Ok(Self {
+            file: self.file.try_clone()?,
+            available_capabilities: self.available_capabilities,
+        })
+    }
+
     /// Opens a V4L2 device file from the given path.
     ///
     /// If the path does not refer to a V4L2 device node, an error will be returned.
